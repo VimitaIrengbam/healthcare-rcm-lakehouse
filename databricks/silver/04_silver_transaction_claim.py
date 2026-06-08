@@ -17,7 +17,7 @@ txn_bronze = f"{config.BRONZE}/emr/transactions/"
 txn_target = config.fqn(config.SCHEMA_SILVER, "transaction")
 
 with audit.log_load(spark, "silver_transaction", txn_bronze, txn_target, "batch") as a:
-    raw = spark.read.parquet(txn_bronze)
+    raw = spark.read.option("recursiveFileLookup", "true").parquet(txn_bronze)
     a["rows_read"] = raw.count()
     rules = [
         dq.not_null("txn_id"), dq.not_null("hospital_id"),

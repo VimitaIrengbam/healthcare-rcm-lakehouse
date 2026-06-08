@@ -17,7 +17,7 @@ target = config.fqn(config.SCHEMA_SILVER, "patient")
 
 # COMMAND ----------
 with audit.log_load(spark, "silver_patient", bronze_path, target, "scd2") as a:
-    raw = spark.read.parquet(bronze_path)
+    raw = spark.read.option("recursiveFileLookup", "true").parquet(bronze_path)
     a["rows_read"] = raw.count()
 
     # 1) Data quality -> quarantine invalid rows

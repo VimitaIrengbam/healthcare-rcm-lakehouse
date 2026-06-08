@@ -28,10 +28,11 @@ def split_valid_quarantine(df: DataFrame, rules: list[Rule]) -> tuple[DataFrame,
         return df, df.limit(0).withColumn("dq_failed_rules", F.array().cast("array<string>")) \
                               .withColumn("dq_quarantined_at", F.current_timestamp())
 
-    # Build a column listing which rules failed for each row
-    failed = F.array_remove(
-        F.array(*[F.when(~r.expr, F.lit(r.name)).otherwise(F.lit(None)) for r in rules]),
-        None,
+    # Build a column listing which rules failed for each row.
+    # NOTE: use array_compact (not array_remove(arr, None)) — array_remove(arr, NULL)
+    # returns NULL in Spark, which would null out every row's failed-rules array.
+    failed = F.array_compact(
+        F.array(*[F.when(~r.expr, F.lit(r.name)) for r in rules])
     )
     tagged = df.withColumn("dq_failed_rules", failed)
 

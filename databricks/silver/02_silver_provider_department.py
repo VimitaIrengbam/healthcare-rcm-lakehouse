@@ -16,7 +16,7 @@ dept_bronze = f"{config.BRONZE}/emr/department/"
 dept_target = config.fqn(config.SCHEMA_SILVER, "department")
 
 with audit.log_load(spark, "silver_department", dept_bronze, dept_target, "scd2") as a:
-    raw = spark.read.parquet(dept_bronze)
+    raw = spark.read.option("recursiveFileLookup", "true").parquet(dept_bronze)
     a["rows_read"] = raw.count()
     valid, bad = dq.split_valid_quarantine(raw, [dq.not_null("dept_id"), dq.not_null("hospital_id")])
     dq.write_quarantine(bad, f"{config.QUARANTINE}/department/")
@@ -34,7 +34,7 @@ prov_target = config.fqn(config.SCHEMA_SILVER, "provider")
 npi_ref = config.fqn(config.SCHEMA_BRONZE, "ref_npi")
 
 with audit.log_load(spark, "silver_provider", prov_bronze, prov_target, "scd2") as a:
-    raw = spark.read.parquet(prov_bronze)
+    raw = spark.read.option("recursiveFileLookup", "true").parquet(prov_bronze)
     a["rows_read"] = raw.count()
     valid, bad = dq.split_valid_quarantine(raw, [dq.not_null("provider_id"), dq.not_null("hospital_id")])
     dq.write_quarantine(bad, f"{config.QUARANTINE}/provider/")

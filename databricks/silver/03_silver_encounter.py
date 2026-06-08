@@ -21,7 +21,7 @@ LATE_GRACE_DAYS = 7
 
 # COMMAND ----------
 with audit.log_load(spark, "silver_encounter", bronze_path, target, "incremental_merge") as a:
-    raw = spark.read.parquet(bronze_path)
+    raw = spark.read.option("recursiveFileLookup", "true").parquet(bronze_path)
     a["rows_read"] = raw.count()
 
     rules = [
