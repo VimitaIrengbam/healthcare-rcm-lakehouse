@@ -79,8 +79,8 @@ See [`docs/PHASES.md`](docs/PHASES.md) for the full phase-by-phase plan.
 
 ## Cost guardrails (Azure trial: 30 days / $200)
 
-- Databricks clusters auto-terminate (10–15 min); use single/small nodes.
-- Azure SQL is **Serverless** with auto-pause.
+- Databricks clusters use **strict 10-min idle auto-termination** (the platform minimum); single/small nodes.
+- Azure SQL is **Serverless** with auto-pause at 60 min idle (Azure's minimum).
 - Streaming defaults to a **file source** (no Event Hubs cost).
 - Keep synthetic data small (hundreds–few thousand rows).
 - **Run `teardown.ps1` after every work session**; a budget alert is set as a backstop.
