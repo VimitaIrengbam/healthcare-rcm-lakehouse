@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Generated data / Synthea output (never commit data)
+out/
+data_generation/synthea_out/
+*.csv.gz
+
+# Spark / Delta local warehouse
+spark-warehouse/
+metastore_db/
+derby.log
+
+# Secrets / local env
+.env
+*.local.json
+
+# Databricks
+.databricks/
+
+# Build artifacts (wheel build for the common package)
+dist/
+build/
+*.egg-info/
+
+# Generated EMR seed (regenerate via data_generation/generate_emr_seed_sql.py)
+sql/03_seed_emr_sample.sql

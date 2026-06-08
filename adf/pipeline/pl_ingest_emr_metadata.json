@@ -1,0 +1,95 @@
+{
+  "name": "pl_ingest_emr_metadata",
+  "properties": {
+    "description": "Metadata-driven EMR ingestion (Phase 2a): Lookup config CSV -> Filter is_active -> ForEach table -> Copy Azure SQL to bronze parquet. loadtype drives full vs incremental (watermark).",
+    "activities": [
+      {
+        "name": "Lookup_Config",
+        "type": "Lookup",
+        "typeProperties": {
+          "source": { "type": "DelimitedTextSource" },
+          "dataset": { "referenceName": "ds_config_metadata", "type": "DatasetReference" },
+          "firstRowOnly": false
+        }
+      },
+      {
+        "name": "Filter_Active",
+        "type": "Filter",
+        "dependsOn": [{ "activity": "Lookup_Config", "dependencyConditions": ["Succeeded"] }],
+        "typeProperties": {
+          "items": { "value": "@activity('Lookup_Config').output.value", "type": "Expression" },
+          "condition": { "value": "@equals(item().is_active, '1')", "type": "Expression" }
+        }
+      },
+      {
+        "name": "ForEach_Table",
+        "type": "ForEach",
+        "dependsOn": [{ "activity": "Filter_Active", "dependencyConditions": ["Succeeded"] }],
+        "typeProperties": {
+          "items": { "value": "@activity('Filter_Active').output.value", "type": "Expression" },
+          "isSequential": false,
+          "batchCount": 4,
+          "activities": [
+            {
+              "name": "Audit_Start",
+              "type": "SqlServerStoredProcedure",
+              "linkedServiceName": { "referenceName": "ls_azuresql_emr", "type": "LinkedServiceReference" },
+              "typeProperties": {
+                "storedProcedureName": "dbo.sp_audit_log",
+                "storedProcedureParameters": {
+                  "pipeline_name": { "value": "pl_ingest_emr_metadata", "type": "String" },
+                  "source": { "value": "@concat(item().datasource, '.', item().tablename)", "type": "String" },
+                  "target": { "value": "@item().targetpath", "type": "String" },
+                  "load_type": { "value": "@item().loadtype", "type": "String" },
+                  "status": { "value": "running", "type": "String" }
+                }
+              }
+            },
+            {
+              "name": "Copy_Table",
+              "type": "Copy",
+              "dependsOn": [{ "activity": "Audit_Start", "dependencyConditions": ["Succeeded"] }],
+              "policy": { "timeout": "0.02:00:00", "retry": 1 },
+              "typeProperties": {
+                "source": {
+                  "type": "AzureSqlSource",
+                  "sqlReaderQuery": {
+                    "value": "@if(equals(item().loadtype,'incremental'), concat('SELECT * FROM dbo.', item().tablename, ' WHERE hospital_id = ''', item().datasource, ''' AND ', item().watermark, ' > ''', if(empty(item().watermark_value), '1900-01-01', item().watermark_value), ''''), concat('SELECT * FROM dbo.', item().tablename, ' WHERE hospital_id = ''', item().datasource, ''''))",
+                    "type": "Expression"
+                  }
+                },
+                "sink": { "type": "ParquetSink", "storeSettings": { "type": "AzureBlobFSWriteSettings" } }
+              },
+              "inputs": [{
+                "referenceName": "ds_azuresql_generic", "type": "DatasetReference",
+                "parameters": { "tableName": { "value": "@item().tablename", "type": "Expression" } }
+              }],
+              "outputs": [{
+                "referenceName": "ds_bronze_parquet_generic", "type": "DatasetReference",
+                "parameters": { "targetPath": { "value": "@concat(replace(item().targetpath,'bronze/',''), '/', item().datasource)", "type": "Expression" } }
+              }]
+            },
+            {
+              "name": "Audit_End",
+              "type": "SqlServerStoredProcedure",
+              "dependsOn": [{ "activity": "Copy_Table", "dependencyConditions": ["Succeeded"] }],
+              "linkedServiceName": { "referenceName": "ls_azuresql_emr", "type": "LinkedServiceReference" },
+              "typeProperties": {
+                "storedProcedureName": "dbo.sp_audit_log",
+                "storedProcedureParameters": {
+                  "pipeline_name": { "value": "pl_ingest_emr_metadata", "type": "String" },
+                  "source": { "value": "@concat(item().datasource, '.', item().tablename)", "type": "String" },
+                  "target": { "value": "@item().targetpath", "type": "String" },
+                  "load_type": { "value": "@item().loadtype", "type": "String" },
+                  "status": { "value": "success", "type": "String" },
+                  "rows_written": { "value": "@activity('Copy_Table').output.rowsCopied", "type": "Int32" }
+                }
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "annotations": ["phase-2", "metadata-driven", "bronze"]
+  }
+}

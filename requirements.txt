@@ -1,0 +1,5 @@
+# Runtime deps for the local data-generation / loader scripts.
+# (Databricks notebooks run on the cluster runtime which already includes PySpark + Delta.)
+pandas>=2.0
+pyodbc>=5.0
+requests>=2.31

@@ -1,0 +1,78 @@
+# Databricks Asset Bundle (Phase 7) — defines the job that chains bronze -> silver -> gold,
+# plus the always-on telemetry streaming job. Deploy with:  databricks bundle deploy -t dev
+bundle:
+  name: healthcare-rcm-lakehouse
+
+variables:
+  catalog:
+    default: rcm
+  storage_account:
+    default: strcmdemo
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://adb-XXXXXXXX.azuredatabricks.net   # set to your workspace URL
+
+# Shared cluster spec — small + auto-terminating to control cost
+resources:
+  jobs:
+    rcm_batch_pipeline:
+      name: "RCM Batch Pipeline (bronze->silver->gold)"
+      job_clusters:
+        - job_cluster_key: small
+          new_cluster:
+            spark_version: 15.4.x-scala2.12
+            node_type_id: Standard_DS3_v2
+            num_workers: 1
+            spark_env_vars:
+              RCM_CATALOG: ${var.catalog}
+              RCM_STORAGE_ACCOUNT: ${var.storage_account}
+      tasks:
+        - task_key: bronze_claims
+          job_cluster_key: small
+          notebook_task: { notebook_path: ./bronze/01_autoloader_claims.py }
+        - task_key: bronze_reference
+          job_cluster_key: small
+          notebook_task: { notebook_path: ./bronze/02_api_reference_npi_icd.py }
+        - task_key: silver_patient
+          depends_on: [{ task_key: bronze_reference }]
+          job_cluster_key: small
+          notebook_task: { notebook_path: ./silver/01_silver_patient.py }
+        - task_key: silver_provider_department
+          depends_on: [{ task_key: bronze_reference }]
+          job_cluster_key: small
+          notebook_task: { notebook_path: ./silver/02_silver_provider_department.py }
+        - task_key: silver_encounter
+          depends_on: [{ task_key: bronze_reference }]
+          job_cluster_key: small
+          notebook_task: { notebook_path: ./silver/03_silver_encounter.py }
+        - task_key: silver_transaction_claim
+          depends_on: [{ task_key: bronze_claims }, { task_key: silver_encounter }]
+          job_cluster_key: small
+          notebook_task: { notebook_path: ./silver/04_silver_transaction_claim.py }
+        - task_key: gold_star_schema
+          depends_on:
+            [{ task_key: silver_patient }, { task_key: silver_provider_department },
+             { task_key: silver_transaction_claim }]
+          job_cluster_key: small
+          notebook_task: { notebook_path: ./gold/01_gold_star_schema.py }
+        - task_key: gold_kpis
+          depends_on: [{ task_key: gold_star_schema }]
+          job_cluster_key: small
+          notebook_task: { notebook_path: ./gold/02_gold_kpis.py }
+
+    rcm_telemetry_stream:
+      name: "RCM Telemetry Streaming"
+      tasks:
+        - task_key: telemetry
+          new_cluster:
+            spark_version: 15.4.x-scala2.12
+            node_type_id: Standard_DS3_v2
+            num_workers: 1
+            spark_env_vars:
+              RCM_CATALOG: ${var.catalog}
+              RCM_STORAGE_ACCOUNT: ${var.storage_account}
+          notebook_task: { notebook_path: ./streaming/telemetry_stream.py }

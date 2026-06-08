@@ -1,0 +1,11 @@
+database,datasource,tablename,loadtype,watermark,is_active,targetpath,watermark_value
+emr_source,hospital_a,Patients,full,,1,bronze/emr/patients,
+emr_source,hospital_a,Providers,full,,1,bronze/emr/providers,
+emr_source,hospital_a,Department,full,,1,bronze/emr/department,
+emr_source,hospital_a,Encounter,incremental,start_time,1,bronze/emr/encounter,
+emr_source,hospital_a,Transactions,incremental,txn_date,1,bronze/emr/transactions,
+emr_source,hospital_b,Patients,full,,1,bronze/emr/patients,
+emr_source,hospital_b,Providers,full,,1,bronze/emr/providers,
+emr_source,hospital_b,Department,full,,1,bronze/emr/department,
+emr_source,hospital_b,Encounter,incremental,start_time,1,bronze/emr/encounter,
+emr_source,hospital_b,Transactions,incremental,txn_date,1,bronze/emr/transactions,

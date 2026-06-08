@@ -1,0 +1,19 @@
+{
+  "name": "ds_bronze_parquet_generic",
+  "properties": {
+    "linkedServiceName": { "referenceName": "ls_adls_gen2", "type": "LinkedServiceReference" },
+    "type": "Parquet",
+    "parameters": {
+      "targetPath": { "type": "String" }
+    },
+    "typeProperties": {
+      "location": {
+        "type": "AzureBlobFSLocation",
+        "fileSystem": "bronze",
+        "folderPath": { "value": "@dataset().targetPath", "type": "Expression" }
+      },
+      "compressionCodec": "snappy"
+    },
+    "schema": []
+  }
+}

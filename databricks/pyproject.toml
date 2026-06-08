@@ -1,0 +1,14 @@
+# Packaging for the shared `common` PySpark helpers so they can be installed on a Databricks
+# cluster as a wheel (rcm-common) and imported by the notebooks via `from common import ...`.
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rcm-common"
+version = "0.1.1"
+description = "Shared PySpark utilities for the Healthcare RCM Lakehouse"
+requires-python = ">=3.9"
+
+[tool.setuptools]
+packages = ["common"]

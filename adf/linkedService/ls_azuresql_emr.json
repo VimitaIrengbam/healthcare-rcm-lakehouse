@@ -1,0 +1,14 @@
+{
+  "name": "ls_azuresql_emr",
+  "properties": {
+    "type": "AzureSqlDatabase",
+    "typeProperties": {
+      "connectionString": "Integrated Security=False;Encrypt=True;Connection Timeout=30;Data Source=sqlrcmb70648c.database.windows.net;Initial Catalog=emr_source;User ID=rcmadmin",
+      "password": {
+        "type": "AzureKeyVaultSecret",
+        "store": { "referenceName": "ls_keyvault", "type": "LinkedServiceReference" },
+        "secretName": "sql-admin-password"
+      }
+    }
+  }
+}

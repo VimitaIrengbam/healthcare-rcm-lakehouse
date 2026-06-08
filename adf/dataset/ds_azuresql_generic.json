@@ -1,0 +1,15 @@
+{
+  "name": "ds_azuresql_generic",
+  "properties": {
+    "linkedServiceName": { "referenceName": "ls_azuresql_emr", "type": "LinkedServiceReference" },
+    "type": "AzureSqlTable",
+    "parameters": {
+      "tableName": { "type": "String" }
+    },
+    "typeProperties": {
+      "schema": "dbo",
+      "table": { "value": "@dataset().tableName", "type": "Expression" }
+    },
+    "schema": []
+  }
+}
