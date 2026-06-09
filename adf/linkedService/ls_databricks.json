@@ -1,0 +1,16 @@
+{
+  "name": "ls_databricks",
+  "properties": {
+    "type": "AzureDatabricks",
+    "description": "Databricks workspace for ADF-orchestrated notebook activities. Auth via PAT in Key Vault; reuses the single-user rcm-runner cluster (strict 10-min auto-termination).",
+    "typeProperties": {
+      "domain": "https://adb-7405606479280392.12.azuredatabricks.net",
+      "accessToken": {
+        "type": "AzureKeyVaultSecret",
+        "store": { "referenceName": "ls_keyvault", "type": "LinkedServiceReference" },
+        "secretName": "databricks-token"
+      },
+      "existingClusterId": "0608-181407-sro5nmw2"
+    }
+  }
+}

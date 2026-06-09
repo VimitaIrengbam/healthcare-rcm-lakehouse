@@ -1,0 +1,81 @@
+{
+  "name": "pl_rcm_end_to_end",
+  "properties": {
+    "description": "Master orchestration (Phase 7): one trigger runs the whole medallion flow. Executes the metadata-driven EMR->bronze copy pipeline, then chained Databricks Notebook activities for bronze (API + claims Auto Loader) -> silver -> gold.",
+    "activities": [
+      {
+        "name": "Ingest_EMR_Bronze",
+        "type": "ExecutePipeline",
+        "typeProperties": {
+          "pipeline": { "referenceName": "pl_ingest_emr_metadata", "type": "PipelineReference" },
+          "waitOnCompletion": true
+        }
+      },
+      {
+        "name": "Bronze_Reference_API",
+        "type": "DatabricksNotebook",
+        "dependsOn": [{ "activity": "Ingest_EMR_Bronze", "dependencyConditions": ["Succeeded"] }],
+        "policy": { "timeout": "0.02:00:00", "retry": 0 },
+        "linkedServiceName": { "referenceName": "ls_databricks", "type": "LinkedServiceReference" },
+        "typeProperties": { "notebookPath": "/Workspace/Users/lprashant1941@gmail.com/rcm/02_api_reference_npi_icd" }
+      },
+      {
+        "name": "Bronze_Claims_AutoLoader",
+        "type": "DatabricksNotebook",
+        "dependsOn": [{ "activity": "Bronze_Reference_API", "dependencyConditions": ["Succeeded"] }],
+        "policy": { "timeout": "0.02:00:00", "retry": 0 },
+        "linkedServiceName": { "referenceName": "ls_databricks", "type": "LinkedServiceReference" },
+        "typeProperties": { "notebookPath": "/Workspace/Users/lprashant1941@gmail.com/rcm/01_autoloader_claims" }
+      },
+      {
+        "name": "Silver_Patient",
+        "type": "DatabricksNotebook",
+        "dependsOn": [{ "activity": "Bronze_Claims_AutoLoader", "dependencyConditions": ["Succeeded"] }],
+        "policy": { "timeout": "0.02:00:00", "retry": 0 },
+        "linkedServiceName": { "referenceName": "ls_databricks", "type": "LinkedServiceReference" },
+        "typeProperties": { "notebookPath": "/Workspace/Users/lprashant1941@gmail.com/rcm/01_silver_patient" }
+      },
+      {
+        "name": "Silver_Provider_Department",
+        "type": "DatabricksNotebook",
+        "dependsOn": [{ "activity": "Silver_Patient", "dependencyConditions": ["Succeeded"] }],
+        "policy": { "timeout": "0.02:00:00", "retry": 0 },
+        "linkedServiceName": { "referenceName": "ls_databricks", "type": "LinkedServiceReference" },
+        "typeProperties": { "notebookPath": "/Workspace/Users/lprashant1941@gmail.com/rcm/02_silver_provider_department" }
+      },
+      {
+        "name": "Silver_Encounter",
+        "type": "DatabricksNotebook",
+        "dependsOn": [{ "activity": "Silver_Provider_Department", "dependencyConditions": ["Succeeded"] }],
+        "policy": { "timeout": "0.02:00:00", "retry": 0 },
+        "linkedServiceName": { "referenceName": "ls_databricks", "type": "LinkedServiceReference" },
+        "typeProperties": { "notebookPath": "/Workspace/Users/lprashant1941@gmail.com/rcm/03_silver_encounter" }
+      },
+      {
+        "name": "Silver_Transaction_Claim",
+        "type": "DatabricksNotebook",
+        "dependsOn": [{ "activity": "Silver_Encounter", "dependencyConditions": ["Succeeded"] }],
+        "policy": { "timeout": "0.02:00:00", "retry": 0 },
+        "linkedServiceName": { "referenceName": "ls_databricks", "type": "LinkedServiceReference" },
+        "typeProperties": { "notebookPath": "/Workspace/Users/lprashant1941@gmail.com/rcm/04_silver_transaction_claim" }
+      },
+      {
+        "name": "Gold_Star_Schema",
+        "type": "DatabricksNotebook",
+        "dependsOn": [{ "activity": "Silver_Transaction_Claim", "dependencyConditions": ["Succeeded"] }],
+        "policy": { "timeout": "0.02:00:00", "retry": 0 },
+        "linkedServiceName": { "referenceName": "ls_databricks", "type": "LinkedServiceReference" },
+        "typeProperties": { "notebookPath": "/Workspace/Users/lprashant1941@gmail.com/rcm/01_gold_star_schema" }
+      },
+      {
+        "name": "Gold_KPIs",
+        "type": "DatabricksNotebook",
+        "dependsOn": [{ "activity": "Gold_Star_Schema", "dependencyConditions": ["Succeeded"] }],
+        "policy": { "timeout": "0.02:00:00", "retry": 0 },
+        "linkedServiceName": { "referenceName": "ls_databricks", "type": "LinkedServiceReference" },
+        "typeProperties": { "notebookPath": "/Workspace/Users/lprashant1941@gmail.com/rcm/02_gold_kpis" }
+      }
+    ],
+    "annotations": ["phase-7", "orchestration", "end-to-end"]
+  }
+}
