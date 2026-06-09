@@ -15,6 +15,10 @@ The build is **config/metadata-driven** so future changes are additive (new conf
 ## Phase 0 — Foundations & provisioning
 - Files: `infra/provision.ps1`, `infra/teardown.ps1`, `config/env.json`.
 - Run `./infra/provision.ps1` (creates RG, ADLS+containers, Azure SQL serverless, Databricks, ADF, Key Vault, budget).
+- **Declarative alternative (Bicep):** `infra/main.bicep` (+ `infra/main.bicepparam`) declares the same core
+  resources. Deploy into a fresh RG with a new `suffix`:
+  `az deployment group create -g <rg> -f infra/main.bicep -p infra/main.bicepparam sqlAdminPassword='<pwd>'`.
+  Imperative-only steps (provider registration, secret values, RBAC, budget) stay in `provision.ps1`.
 - **Manual after provisioning:**
   1. Enable Unity Catalog; create catalog `rcm` + schemas `bronze/silver/gold/audit`.
   2. Create a Databricks **secret scope** `rcm-secrets` backed by Key Vault `kv-rcm-demo`.
