@@ -1,0 +1,451 @@
+==========================================================================
+ HEALTHCARE REVENUE CYCLE MANAGEMENT (RCM) LAKEHOUSE
+ A complete, plain-language explanation of the project
+==========================================================================
+
+This document explains the WHOLE project in simple language: what it is, why
+it exists, what each piece does, how the data flows, and how it was built —
+step by step. No prior data-engineering knowledge is assumed. Read it top to
+bottom and you will understand every part of the system and the reason it is
+there.
+
+
+--------------------------------------------------------------------------
+ PART 1 — THE BIG PICTURE: WHAT ARE WE BUILDING AND WHY?
+--------------------------------------------------------------------------
+
+THE BUSINESS PROBLEM
+--------------------
+Hospitals don't just treat patients — they also have to get PAID for that
+care. The whole money journey, from the moment a patient books an appointment,
+to the treatment, to the insurance claim, to the final payment, is called
+"Revenue Cycle Management" (RCM).
+
+This money journey is messy:
+  - Different hospitals keep their records in different systems.
+  - Insurance companies send claim files separately, on their own schedule.
+  - Some claims get denied; some get partially paid; some sit unpaid for weeks.
+
+Hospital finance teams need clear answers to questions like:
+  - "How much money are we owed right now, and how long is it taking to
+     collect?"  (Days in Accounts Receivable)
+  - "Of everything we billed, what fraction are we actually collecting?"
+     (Net Collection Rate)
+  - "Which departments get the most claims denied?"  (Denial Rate)
+
+To answer these reliably, all the scattered, messy data must be pulled into
+one place, cleaned, standardized, and turned into trustworthy numbers.
+
+THE GOAL OF THIS PROJECT
+------------------------
+Build an automated "data factory" in the cloud that:
+  1. Collects raw hospital and insurance data from many sources.
+  2. Cleans and standardizes it so it is reliable.
+  3. Produces the key financial measures (KPIs) the finance team needs.
+  4. Does all of this automatically, repeatedly, and cheaply.
+  5. Keeps the data governed and secure (this is healthcare data).
+
+IMPORTANT: All data in this project is SYNTHETIC (fake but realistic). There
+is no real patient information anywhere. This is a learning/portfolio project.
+
+
+--------------------------------------------------------------------------
+ PART 2 — THE CORE IDEA: THE "MEDALLION" ARCHITECTURE
+--------------------------------------------------------------------------
+
+Think of a restaurant kitchen. Raw ingredients arrive at the back door, get
+washed and prepped, and finally become a finished dish ready to serve. Our
+data goes through the same kind of journey, organized into layers. This is
+called the "medallion architecture" and it has four stages:
+
+  LANDING  -> the back door. Raw files dropped exactly as they arrive.
+  BRONZE   -> the receiving shelf. Raw data copied in, untouched, but stored
+              efficiently. This is our permanent "we have the original" record.
+  SILVER   -> the prep station. Data cleaned, de-duplicated, standardized,
+              sensitive fields masked, and combined into a common shape.
+  GOLD     -> the serving counter. Finished, business-ready tables and KPIs
+              that analysts and finance teams actually use.
+
+Why layers? Because each stage has ONE job. If something goes wrong, you can
+see exactly where. And you never lose the original raw data, so you can always
+rebuild everything from scratch.
+
+The flow in one line:
+  Sources -> LANDING -> BRONZE (Parquet) -> SILVER (Delta) -> GOLD (Delta) -> KPIs
+
+("Parquet" and "Delta" are just efficient file formats for big data. Delta adds
+superpowers like tracking every change and letting you "time-travel" to see how
+a table looked yesterday.)
+
+
+--------------------------------------------------------------------------
+ PART 3 — THE CLOUD: WHY AZURE, AND WHAT EACH RESOURCE DOES
+--------------------------------------------------------------------------
+
+Everything runs on Microsoft Azure (a cloud platform). We rent services
+instead of buying servers. Here is every resource we use, what it is, and the
+exact ROLE it plays in THIS project. Think of it like a company where each
+resource is an employee with a specific job.
+
+1) RESOURCE GROUP  (name: rg-rcm-demo)
+   WHAT: A folder/container that holds all the other Azure resources together.
+   ROLE: Keeps the whole project tidy in one place. Deleting this one folder
+         cleans up everything at once — important for controlling cost.
+   ANALOGY: The building that houses all the departments.
+
+2) AZURE DATA LAKE STORAGE GEN2 — "ADLS"  (name: strcmdemo70648c)
+   WHAT: Cloud storage built for huge amounts of data, organized into
+         "containers" (top-level folders).
+   ROLE: This is the warehouse where ALL our data physically lives. We created
+         these containers, each with a clear purpose:
+            landing     -> raw incoming files (claims, telemetry)
+            bronze      -> raw data copied from sources (Parquet)
+            silver      -> cleaned, standardized tables (Delta)
+            gold        -> business-ready KPI tables (Delta)
+            quarantine  -> "bad" rows that failed quality checks
+            checkpoints -> bookmarks so streaming/auto-loading knows what it
+                           already processed
+            metadata    -> the config file that drives the pipeline
+            archive     -> dated backups of old bronze data before it is replaced
+   ANALOGY: The warehouse with clearly labeled aisles.
+
+3) AZURE SQL DATABASE (Serverless)  (name: sqlrcmb70648c / DB: emr_source)
+   WHAT: A traditional relational database.
+   ROLE: It plays the part of the hospitals' "EMR" system (Electronic Medical
+         Records) — the SOURCE of patient, provider, department, encounter,
+         and transaction data. In real life this would be the hospital's
+         existing system; here we created it and filled it with synthetic data.
+   WHY "Serverless": It automatically pauses when no one is using it, so it
+         costs almost nothing while idle. Cost control was a top priority.
+   ANALOGY: The hospital's own filing cabinet that we copy records FROM.
+
+4) AZURE DATA FACTORY — "ADF"  (name: adf-rcm-demo-70648c)
+   WHAT: A drag-and-drop "orchestration" service that moves and copies data
+         on a schedule, with no code.
+   ROLE: It is the DELIVERY DRIVER and FOREMAN. It reads a config file, then
+         loops over every table and every hospital and copies the EMR data
+         from the SQL database into the bronze container. It also archives old
+         data, records what it did in an audit log, and can kick off the
+         Databricks notebooks to run the whole pipeline end to end.
+   ANALOGY: The logistics manager who picks up goods and routes them correctly.
+
+5) AZURE DATABRICKS  (workspace: dbw-rcm-demo)
+   WHAT: A powerful platform for processing big data using Apache Spark
+         (an engine that can crunch huge datasets fast by splitting the work).
+   ROLE: This is the KITCHEN where the real cooking happens. All the cleaning,
+         standardizing, business logic, and KPI calculations run here as
+         "notebooks" (documents that contain runnable code). It reads bronze,
+         produces silver, then produces gold.
+   ANALOGY: The professional kitchen with the chefs and equipment.
+
+6) UNITY CATALOG  (inside Databricks; catalog: dbw_rcm_demo)
+   WHAT: The governance and organization layer for all data tables. It tracks
+         every table, who can see it, and where its files live.
+   ROLE: It is the LIBRARIAN and SECURITY GUARD. It organizes tables into
+         schemas (bronze, silver, gold, audit), controls access, and lets us
+         hide sensitive columns from people who shouldn't see them. It also
+         lets an analyst simply type a table name (e.g. "gold.kpi_denial_rate
+         _by_dept") to query data, without knowing where the files are.
+   ANALOGY: The library catalog plus the door security for the data.
+
+7) AZURE KEY VAULT  (name: kv-rcm-demo-70648c)
+   WHAT: A secure locker for passwords, keys, and secrets.
+   ROLE: It safely stores the database password, the storage access key, and
+         the Databricks access token. Nothing sensitive is written into code or
+         config files — the other services fetch secrets from here when needed.
+   ANALOGY: The safe where all the keys are kept.
+
+8) DATABRICKS ACCESS CONNECTOR + STORAGE CREDENTIAL + EXTERNAL LOCATIONS
+   WHAT: A secure identity ("managed identity") plus the Unity Catalog objects
+         that let Databricks read and write our storage containers in a
+         governed way.
+   ROLE: This is the SIGNED PERMISSION SLIP that lets the silver and gold
+         tables physically store their files inside OUR silver/gold containers
+         (instead of a hidden default location), while still being governed
+         tables you can query by name. We created an access connector, gave it
+         permission on the storage account, and pointed the silver/gold
+         "schemas" at the matching containers.
+   ANALOGY: The badge and access rules that let the kitchen staff into specific
+            warehouse aisles.
+
+9) COST CONTROLS (budgets + auto-termination)
+   WHAT: Settings that stop spending when work is idle.
+   ROLE: The Databricks compute cluster shuts itself off after 10 minutes of
+         inactivity (the strictest allowed), and the SQL database auto-pauses
+         after 60 minutes. This protects the free trial credits.
+   ANALOGY: Lights and machines that turn themselves off when everyone leaves.
+
+
+--------------------------------------------------------------------------
+ PART 4 — THE DATA SOURCES: WHERE DOES THE DATA COME FROM?
+--------------------------------------------------------------------------
+
+The project deliberately uses THREE different kinds of sources, because real
+projects always have to combine data that arrives in different ways:
+
+A) EMR DATA (from the Azure SQL database)
+   Five tables that model a hospital's records:
+     - Patients      (who the patient is)
+     - Providers     (the doctors)
+     - Department    (e.g. Cardiology, Oncology)
+     - Encounter     (a visit/treatment, with diagnosis & procedure codes)
+     - Transactions  (the money: charges, payments, adjustments)
+   These are pulled in by Azure Data Factory. There are TWO hospitals
+   (hospital_a and hospital_b), so we can show multi-hospital handling.
+
+B) CLAIMS DATA (flat files from "the insurance company")
+   Monthly CSV files of insurance claims (billed amount, allowed amount, paid
+   amount, denial code, status). These are dropped into the landing container
+   and picked up automatically by Databricks "Auto Loader".
+
+C) REFERENCE DATA (from public internet APIs)
+   - NPI  = National Provider Identifier (official doctor IDs)
+   - ICD  = International Classification of Diseases (diagnosis codes)
+   Pulled from public web services to enrich/standardize our data.
+
+(There is also a fourth, optional source: simulated patient "telemetry" —
+vital signs like heart rate and oxygen — used to demonstrate real-time
+streaming. It is built but not central to the finance KPIs.)
+
+
+--------------------------------------------------------------------------
+ PART 5 — THE PIPELINE, STAGE BY STAGE (HOW DATA ACTUALLY MOVES)
+--------------------------------------------------------------------------
+
+STAGE 1 — CONFIG-DRIVEN INGESTION INTO BRONZE (Azure Data Factory)
+------------------------------------------------------------------
+Instead of writing a separate pipeline for every table, we use ONE smart
+pipeline driven by a configuration file: configs/configs.csv. Each row in that
+file describes one table to load, with columns:
+    database, datasource (hospital), tablename, loadtype, watermark,
+    is_active, targetpath
+
+The ADF pipeline does this for every active row:
+  1. LOOKUP   — read the config file.
+  2. FILTER   — keep only rows marked active (is_active = 1).
+  3. FOR EACH — loop over each table/hospital combination and:
+       a. GET METADATA — check if data already exists in that hospital's bronze
+          folder.
+       b. ARCHIVE — if it exists, copy it to the archive container under a
+          year/month/day folder (a dated backup, so nothing is ever lost).
+       c. DELETE (full loads only) — clear the bronze folder so a full reload
+          writes ONE clean snapshot instead of piling duplicates on top.
+          (Incremental loads SKIP this and append instead — see below.)
+       d. COPY — copy the rows from SQL into the hospital's bronze folder as
+          Parquet.
+       e. LOG — write an audit record (what ran, how many rows, the watermark).
+
+WHY "metadata-driven"? Adding a new table later is as easy as adding one line
+to the config file. No new pipeline, no new code.
+
+FULL vs INCREMENTAL loads (a key concept):
+  - FULL: re-copy ALL rows every time (used for small, slowly-changing tables
+    like Patients, Providers, Department). Old bronze is archived then replaced.
+  - INCREMENTAL: only copy NEW rows since last time (used for fast-growing
+    tables like Encounter and Transactions). The pipeline remembers the last
+    "watermark" (a timestamp like start_time or txn_date) in the audit log,
+    reads only rows newer than that, and APPENDS them — so history is preserved.
+
+STAGE 2 — THE AUDIT LOG (the system's diary)
+--------------------------------------------
+Every load writes a row into an audit table (dbo.audit_log). It records the
+source, table, load type, the watermark used, how many rows moved, and success/
+failure. This is how incremental loads "remember" where they left off, and how
+anyone can later see exactly what happened and when.
+
+STAGE 3 — CLAIMS & REFERENCE DATA INTO BRONZE (Databricks)
+----------------------------------------------------------
+  - Auto Loader watches the landing/claims folder and incrementally ingests new
+    claim files into a bronze table, remembering processed files via checkpoints
+    (so it never double-loads).
+  - A notebook calls the NPI and ICD web APIs and stores the results in bronze.
+
+STAGE 4 — SILVER: CLEAN, STANDARDIZE, GOVERN (Databricks)
+---------------------------------------------------------
+This is where raw data becomes trustworthy. For each entity we:
+  - QUARANTINE bad rows: rows that fail quality rules (missing IDs, invalid
+    values) are routed to the quarantine container instead of polluting silver.
+  - DE-DUPLICATE: keep only the latest version of each record.
+  - MASK SENSITIVE DATA (PII): names, addresses, SSNs, and dates of birth are
+    redacted/hashed so analysts can work without exposing private details. Unity
+    Catalog can additionally hide columns based on who is asking. (Compliance!)
+  - BUILD A COMMON DATA MODEL (CDM): combine both hospitals into one consistent
+    shape, joined with the NPI/ICD reference data.
+  - SLOWLY CHANGING DIMENSIONS TYPE 2 (SCD2): for Patient, Provider, Department
+    we keep HISTORY. When a record changes, we don't overwrite it — we close the
+    old version (effective_to) and add a new current version (is_current = true).
+    This lets you ask "what did this look like back in March?"
+  - SURROGATE KEY: each patient gets a stable internal key (patient_sk) derived
+    from their natural key. This decouples downstream tables from the messy
+    source IDs and is standard data-warehouse practice.
+
+The silver tables are stored as Delta in the SILVER container, so anyone (data
+engineer or analyst) can both query them by name AND see/track the files
+directly, including their full change history.
+
+STAGE 5 — GOLD: THE BUSINESS ANSWERS (Databricks)
+-------------------------------------------------
+First we shape the clean silver data into a classic "star schema": fact tables
+(claims, transactions) surrounded by dimension tables (patient, provider,
+department, date). This layout is fast and intuitive for analytics.
+
+Then we calculate the three headline KPIs (stored as Delta in the GOLD
+container so analysts can use them directly):
+
+  - DAYS IN A/R (Accounts Receivable):
+      How many days, on average, it takes to collect money owed.
+      = Total money owed  /  (average money billed per day)
+      Lower is better. Rising numbers warn of collection problems.
+
+  - NET COLLECTION RATE (NCR):
+      Of the money we were realistically entitled to, how much did we collect?
+      = Payments  /  (Charges  -  Contractual Adjustments)
+      Closer to 100% is better.
+
+  - DENIAL RATE BY DEPARTMENT:
+      What fraction of a department's claims get denied?
+      = Denied claims  /  Total claims, grouped by department.
+      Highlights departments that need process fixes.
+
+STAGE 6 (optional) — REAL-TIME STREAMING
+----------------------------------------
+A separate Spark "Structured Streaming" job demonstrates real-time processing:
+it reads simulated patient vital-sign events, uses "event-time watermarking" to
+handle late-arriving data, computes rolling averages, and flags anomalies (e.g.
+low oxygen). This shows the platform can handle continuous data, not just
+scheduled batches.
+
+
+--------------------------------------------------------------------------
+ PART 6 — HOW IT ALL RUNS TOGETHER (ORCHESTRATION)
+--------------------------------------------------------------------------
+
+A master Azure Data Factory pipeline (pl_rcm_end_to_end) ties everything into
+ONE click:
+   1. Run the EMR -> bronze copy pipeline.
+   2. Then run the Databricks notebooks in order:
+        bronze (claims + reference) -> silver (x4) -> gold (star + KPIs).
+
+So a single trigger takes raw source data all the way to finished KPIs. It can
+also be scheduled to run automatically (we left scheduling OFF by default to
+avoid spending cloud credits unattended).
+
+
+--------------------------------------------------------------------------
+ PART 7 — KEEPING IT PROFESSIONAL: DEVOPS, CODE, AND INFRASTRUCTURE
+--------------------------------------------------------------------------
+
+GIT & GITHUB
+  All code, config, notebooks, and infrastructure definitions are version-
+  controlled with Git and published to a public GitHub repository. This means
+  the whole project is reproducible, reviewable, and shareable.
+
+CI/CD (Continuous Integration)
+  A GitHub Actions workflow automatically runs code-quality checks and unit
+  tests (for the data-quality rules, masking, surrogate keys, SCD2, and KPI
+  math) whenever code is pushed — catching mistakes early.
+
+INFRASTRUCTURE AS CODE (IaC) — three flavors, so the cloud setup is repeatable:
+  - provision.ps1  : a PowerShell script using the Azure CLI (step-by-step,
+                     "imperative" — do this, then this).
+  - main.bicep     : Azure's native "declarative" language (describe the desired
+                     end state; Azure makes it so).
+  - terraform/     : Terraform (a popular cross-cloud declarative tool).
+  Plus the ADF pipelines (as JSON) and a Databricks "Asset Bundle" (jobs as code).
+
+UNIT TESTS
+  Small, fast tests that run on a laptop (no cloud needed) prove the core logic
+  is correct before it ever touches real infrastructure.
+
+
+--------------------------------------------------------------------------
+ PART 8 — WHO USES WHAT (THE ROLES)
+--------------------------------------------------------------------------
+
+DATA ENGINEER (builds and maintains the factory):
+  - Edits the config file to onboard new tables.
+  - Maintains the ADF pipelines and Databricks notebooks.
+  - Watches the audit log and quarantine for problems.
+  - Manages cost (auto-termination, pausing).
+
+DATA ANALYST / FINANCE TEAM (consumes the results):
+  - Queries the gold KPI tables by name (Days in A/R, NCR, Denial Rate) to build
+    reports and dashboards.
+  - Can browse the silver/gold Delta files in ADLS to track changes over time or
+    build new KPIs on top of the trusted data.
+
+COMPLIANCE / SECURITY:
+  - Relies on PII masking, Unity Catalog access control, the audit trail, and
+    Key Vault to keep sensitive healthcare data protected.
+
+
+--------------------------------------------------------------------------
+ PART 9 — THE BUILD JOURNEY (HOW THE PROJECT WAS CREATED, IN ORDER)
+--------------------------------------------------------------------------
+
+Step 1  — PLAN: define the goal (RCM lakehouse), the architecture (medallion),
+          and the technology choices. Lay out the folder structure.
+
+Step 2  — SCAFFOLD: create the whole project skeleton — infra scripts, config,
+          data generators, notebooks, SQL, tests, CI — and validate it.
+
+Step 3  — GENERATE SYNTHETIC DATA: claims files, telemetry events, and an EMR
+          seed (patients, providers, departments, encounters, transactions).
+
+Step 4  — PROVISION AZURE: install the Azure CLI, register cloud providers,
+          and create the resource group, storage, SQL, Databricks, Data
+          Factory, and Key Vault. Many real-world hurdles were solved here
+          (region capacity limits, permission models, idempotent scripts).
+
+Step 5  — LOAD THE SOURCE: create the EMR database tables and fill them with
+          the synthetic data.
+
+Step 6  — BRONZE INGESTION: build and run the metadata-driven ADF pipeline to
+          copy EMR -> bronze; bring claims in via Auto Loader; pull NPI/ICD from
+          public APIs. Record everything in the audit log.
+
+Step 7  — DATABRICKS SETUP: enable Unity Catalog, create schemas, store secrets,
+          package shared code, and run the notebooks via the cluster.
+
+Step 8  — SILVER & GOLD: clean, standardize, mask, build the common model, apply
+          SCD2 and surrogate keys, build the star schema, and compute KPIs.
+
+Step 9  — VERIFY: confirm real numbers flowed through end to end and the KPIs
+          make sense.
+
+Step 10 — PUBLISH: commit everything to Git and push to GitHub; set up CI and
+          add Bicep + Terraform infrastructure definitions.
+
+Step 11 — ENHANCE: add archive-before-load with date partitioning, audit-driven
+          incremental watermarks, a patient surrogate key, and the end-to-end
+          orchestration pipeline.
+
+Step 12 — GOVERNED STORAGE: point the silver/gold tables at the silver/gold ADLS
+          containers (via access connector + storage credential + external
+          locations) so the Delta files physically live there and anyone can
+          access them — while staying governed and queryable by name.
+
+Step 13 — HARDEN: fix the incremental-load data-loss issue (only full loads
+          replace bronze; incremental appends), keep strict cost controls, and
+          document everything.
+
+
+--------------------------------------------------------------------------
+ PART 10 — IN ONE PARAGRAPH (THE WHOLE THING, SIMPLY)
+--------------------------------------------------------------------------
+
+We built an automated cloud "data factory" that gathers a hospital group's
+financial and clinical data from several sources (a database, monthly insurance
+files, and public code lists), copies it safely into cloud storage, cleans and
+standardizes it while protecting private information, keeps a full history of
+changes, and turns it into a handful of trustworthy financial measures — how
+fast the hospitals collect money, how much of what they bill they actually
+collect, and where claims get denied. Every step is automated, repeatable,
+governed, version-controlled, and cost-controlled, so a data analyst can simply
+open the gold tables and get reliable answers, and a data engineer can extend
+the system by editing a single config file.
+
+==========================================================================
+ End of explanation. Project repo:
+ https://github.com/VimitaIrengbam/healthcare-rcm-lakehouse
+==========================================================================
