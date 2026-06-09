@@ -19,6 +19,8 @@ The build is **config/metadata-driven** so future changes are additive (new conf
   resources. Deploy into a fresh RG with a new `suffix`:
   `az deployment group create -g <rg> -f infra/main.bicep -p infra/main.bicepparam sqlAdminPassword='<pwd>'`.
   Imperative-only steps (provider registration, secret values, RBAC, budget) stay in `provision.ps1`.
+- **Declarative alternative (Terraform):** `infra/terraform/` (`main.tf`, `variables.tf`, `outputs.tf`).
+  `cd infra/terraform && terraform init && terraform apply -var="sql_admin_password=<pwd>"`.
 - **Manual after provisioning:**
   1. Enable Unity Catalog; create catalog `rcm` + schemas `bronze/silver/gold/audit`.
   2. Create a Databricks **secret scope** `rcm-secrets` backed by Key Vault `kv-rcm-demo`.

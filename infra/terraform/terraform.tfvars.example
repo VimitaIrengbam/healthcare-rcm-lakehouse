@@ -1,0 +1,9 @@
+# Copy to terraform.tfvars and fill in. Do NOT commit terraform.tfvars (it's gitignored).
+# sql_admin_password is required; prefer passing it via env: TF_VAR_sql_admin_password=...
+resource_group_name = "rg-rcm-demo"
+location            = "eastus"
+sql_location        = "centralus"
+suffix              = "70648c"
+sql_admin_user      = "rcmadmin"
+# sql_admin_password = "set-via-CLI-or-TF_VAR-instead"
+# kv_admin_object_id = "<your-aad-object-id>"

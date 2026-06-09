@@ -30,3 +30,12 @@ build/
 
 # Generated EMR seed (regenerate via data_generation/generate_emr_seed_sql.py)
 sql/03_seed_emr_sample.sql
+
+# Terraform (never commit state or real tfvars/secrets)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl
+crash.log
