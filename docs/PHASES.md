@@ -45,6 +45,16 @@ The build is **config/metadata-driven** so future changes are additive (new conf
 - ADF side: `sql/02_audit_stored_proc.sql` (`dbo.sp_audit_log`, called by the pipeline).
 - Databricks side: `databricks/common/audit.py` → Delta table `rcm.audit.pipeline_log` (used by every notebook via `with audit.log_load(...)`).
 
+## Silver/Gold storage in ADLS containers (Unity Catalog external locations)
+So silver/gold Delta files physically live in the `silver`/`gold` ADLS containers (not UC default storage):
+1. Create a **Databricks Access Connector** (`ac-rcm-demo`, system-assigned MI).
+2. Grant it **Storage Blob Data Contributor** on the storage account.
+3. UC **storage credential** (`rcm_storage_cred`) → the access connector.
+4. UC **external locations** `rcm_silver`/`rcm_gold` over `abfss://silver|gold@<acct>.dfs.core.windows.net/`.
+5. Repoint schemas: `CREATE SCHEMA dbw_rcm_demo.silver MANAGED LOCATION 'abfss://silver@.../'` (same for gold).
+   Now `saveAsTable` managed tables store their Delta under those containers; analysts query by name
+   (`silver.patient`, `gold.kpi_*`) and the files are in ADLS.
+
 ## Phase 4 — Silver (cleanse / govern / CDM / SCD2)
 - Files: `databricks/silver/0{1..4}_*.py`, helpers `common/{dq,masking,scd}.py`, `silver/masking_policies.sql`.
 - Quarantine (`dq.split_valid_quarantine`), dedup, PII redaction (`masking`), late-arriving handling

@@ -1,7 +1,7 @@
 {
   "name": "pl_ingest_emr_metadata",
   "properties": {
-    "description": "Metadata-driven EMR ingestion (v2). Lookup configs.csv -> filter active -> ForEach (datasource+table): Get Metadata checks the bronze hospital folder; if files exist, archive them to archive/<table>/<hospital>/yyyy/MM/dd and clear the folder; then Full load (all rows) or Incremental load (between last audit watermark and current source max); finally log to audit. Bronze is partitioned per hospital: bronze/<targetpath>/<datasource>/.",
+    "description": "Metadata-driven EMR ingestion (v2). Lookup configs.csv -> filter active -> ForEach (datasource+table): Get Metadata checks the bronze hospital folder; if files exist, archive them to archive/<table>/<hospital>/yyyy/MM/dd. FULL loads then clear the folder and reload all rows (snapshot replace); INCREMENTAL loads keep bronze and append only rows between the last audit watermark and the current source max (no data loss). Every load is logged via sp_log_load. Bronze is partitioned per hospital: bronze/<targetpath>/<datasource>/.",
     "activities": [
       {
         "name": "Lookup_Config",
@@ -38,13 +38,13 @@
                   "type": "DatasetReference",
                   "parameters": { "folderPath": { "value": "@concat(item().targetpath, '/', item().datasource)", "type": "Expression" } }
                 },
-                "fieldList": ["exists", "childItems"],
+                "fieldList": ["exists"],
                 "storeSettings": { "type": "AzureBlobFSReadSettings", "recursive": false, "enablePartitionDiscovery": false },
                 "formatSettings": { "type": "BinaryReadSettings" }
               }
             },
             {
-              "name": "If_Files_Exist",
+              "name": "If_Files_Exist_Archive",
               "type": "IfCondition",
               "dependsOn": [{ "activity": "Check_Bronze_Folder", "dependencyConditions": ["Succeeded"] }],
               "typeProperties": {
@@ -59,11 +59,21 @@
                     },
                     "inputs": [{ "referenceName": "ds_bronze_folder", "type": "DatasetReference", "parameters": { "folderPath": { "value": "@concat(item().targetpath, '/', item().datasource)", "type": "Expression" } } }],
                     "outputs": [{ "referenceName": "ds_archive_folder", "type": "DatasetReference", "parameters": { "folderPath": { "value": "@concat(item().targetpath, '/', item().datasource, '/', formatDateTime(utcnow(),'yyyy'), '/', formatDateTime(utcnow(),'MM'), '/', formatDateTime(utcnow(),'dd'))", "type": "Expression" } } }]
-                  },
+                  }
+                ]
+              }
+            },
+            {
+              "name": "If_Full_Clear_Bronze",
+              "type": "IfCondition",
+              "dependsOn": [{ "activity": "If_Files_Exist_Archive", "dependencyConditions": ["Succeeded"] }],
+              "description": "Only FULL loads clear bronze (snapshot replace) after archiving. Incremental loads keep bronze and append.",
+              "typeProperties": {
+                "expression": { "value": "@and(activity('Check_Bronze_Folder').output.exists, equals(item().loadtype, 'full'))", "type": "Expression" },
+                "ifTrueActivities": [
                   {
                     "name": "Delete_Old_Bronze",
                     "type": "Delete",
-                    "dependsOn": [{ "activity": "Archive_Existing", "dependencyConditions": ["Succeeded"] }],
                     "typeProperties": {
                       "dataset": { "referenceName": "ds_bronze_folder", "type": "DatasetReference", "parameters": { "folderPath": { "value": "@concat(item().targetpath, '/', item().datasource)", "type": "Expression" } } },
                       "enableLogging": false,
@@ -76,7 +86,7 @@
             {
               "name": "Get_Old_Watermark",
               "type": "Lookup",
-              "dependsOn": [{ "activity": "If_Files_Exist", "dependencyConditions": ["Succeeded"] }],
+              "dependsOn": [{ "activity": "If_Full_Clear_Bronze", "dependencyConditions": ["Succeeded"] }],
               "typeProperties": {
                 "source": {
                   "type": "AzureSqlSource",
@@ -89,7 +99,7 @@
             {
               "name": "Get_New_Watermark",
               "type": "Lookup",
-              "dependsOn": [{ "activity": "If_Files_Exist", "dependencyConditions": ["Succeeded"] }],
+              "dependsOn": [{ "activity": "If_Full_Clear_Bronze", "dependencyConditions": ["Succeeded"] }],
               "typeProperties": {
                 "source": {
                   "type": "AzureSqlSource",
