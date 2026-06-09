@@ -215,3 +215,41 @@ large fact tables; and add environment promotion (dev/test/prod) through the IaC
   owed we actually collect; closer to 100% is better.*
 - **Denial Rate by department** = Denied claims ÷ Total claims, by department. *Where claims fail;
   pinpoints process problems.*
+
+---
+
+## 8. How to talk about the telemetry ingestion (simulator vs Kafka)
+
+**Principle:** be honest, but frame the simulator as a **deliberate design choice**, not a missing
+capability. Lead with the production design, then mention the simulator as a conscious substitution —
+emphasizing that *only the source connector changes, not the logic*.
+
+**Ready-to-use answer (~30s):**
+> "For real-time patient telemetry, the production design is: devices publish vitals through a gateway
+> into **Azure Event Hubs / IoT Hub** (or Kafka), and my **Spark Structured Streaming** job consumes
+> from there — with event-time watermarking, windowed aggregations, and checkpointing for exactly-once.
+> In my build, since it's a portfolio project on a free Azure trial, I **deliberately used a file-source
+> simulator** that writes vitals as newline-JSON into the landing zone, and pointed Structured Streaming
+> at that file source. Two reasons: it avoids the cost of an always-on messaging service, and the
+> streaming logic is **identical** either way — going to production is essentially swapping
+> `readStream.format('cloudFiles')` for `readStream.format('eventhubs'/'kafka')`. Watermarking,
+> aggregation, anomaly detection, and the Delta sink all stay the same."
+
+**If they probe "how would you productionize it?":**
+- Source: Event Hubs / IoT Hub (or Kafka); devices -> gateway (HL7/MQTT) -> Event Hubs.
+- Connector: `readStream.format("eventhubs"/"kafka")`, connection string in Key Vault.
+- Scaling: partition by device/patient; autoscaling job cluster or Delta Live Tables.
+- Reliability: checkpointing (already there), exactly-once, dead-letter for bad events.
+- Downstream unchanged: watermark + windows + anomaly flag + Delta sink.
+
+**What NOT to say:**
+- "We don't have Kafka set up." (sounds like inability)
+- Don't over-apologize or call it "just fake data."
+- Do say: "I simulated the *producer*; the *consumer* is production-shaped — source-agnostic by design."
+
+**One-liner if short on time:**
+> "Telemetry is a simulated device feed on a file source for the demo, but the Structured Streaming
+> consumer is production-ready — in real life it's Event Hubs/Kafka, and only the source connector changes."
+
+> See also: [`docs/streaming-rationale.md`](docs/streaming-rationale.md) and
+> [`docs/ingestion-sources.md`](docs/ingestion-sources.md).
