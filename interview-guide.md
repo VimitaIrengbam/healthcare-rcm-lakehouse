@@ -28,6 +28,8 @@ governance, CI/CD, IaC.
 `Sources → Landing → Bronze (Parquet) → Silver (Delta) → Gold (Delta) → KPIs`
 — orchestrated by ADF + Databricks, governed by Unity Catalog, secrets in Key Vault.
 
+📊 **Architecture flow diagram:** [`docs/architecture.md`](docs/architecture.md) (renders on GitHub).
+
 ---
 
 ## 3. Step-by-step: ingestion → KPI

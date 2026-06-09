@@ -12,6 +12,8 @@ KPIs: **Days in A/R**, **Net Collection Rate (NCR)**, and **Denial Rate by depar
 
 ## Architecture
 
+> 📊 Full rendered flow diagram: [`docs/architecture.md`](docs/architecture.md)
+
 ```
                  ┌─────────────── SOURCES ───────────────┐
  Azure SQL (EMR) ─┤ ADF metadata-driven Copy (config CSV) ├─┐
