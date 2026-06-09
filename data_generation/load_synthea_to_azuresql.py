@@ -113,16 +113,21 @@ def map_encounter(enc, proc, hospital):
 def map_transactions(claims, hospital):
     if claims.empty:
         return claims
+    svc = claims.get("SERVICEDATE")
     return pd.DataFrame({
         "txn_id": claims["Id"],
         "hospital_id": hospital,
         "encounter_id": claims.get("APPOINTMENTID"),
+        "patient_id": claims.get("PATIENTID"),          # transaction's patient (guarantor)
         "amount": pd.to_numeric(claims.get("TOTAL_CLAIM_COST"), errors="coerce"),
         "paid_amount": pd.to_numeric(claims.get("PAYER_COVERAGE"), errors="coerce"),
         "adjustment": 0,
+        "amount_type": "Insurance",                     # default for Synthea-derived rows
         "payer": claims.get("PAYER"),
         "status": "billed",
-        "txn_date": claims.get("SERVICEDATE"),
+        "visit_date": svc,
+        "service_date": svc,
+        "txn_date": svc,
     })
 
 
@@ -131,7 +136,7 @@ INSERTS = {
     "Department": ("dept_id,hospital_id,name", 3),
     "Providers": ("provider_id,hospital_id,npi,name,specialty,dept_id", 6),
     "Encounter": ("encounter_id,hospital_id,patient_id,provider_id,dept_id,encounter_type,procedure_code,start_time,end_time,icd_code", 10),
-    "Transactions": ("txn_id,hospital_id,encounter_id,amount,paid_amount,adjustment,payer,status,txn_date", 9),
+    "Transactions": ("txn_id,hospital_id,encounter_id,patient_id,amount,paid_amount,adjustment,amount_type,payer,status,visit_date,service_date,txn_date", 13),
 }
 
 

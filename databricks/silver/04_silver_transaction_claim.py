@@ -21,17 +21,19 @@ with audit.log_load(spark, "silver_transaction", txn_bronze, txn_target, "batch"
     a["rows_read"] = raw.count()
     rules = [
         dq.not_null("txn_id"), dq.not_null("hospital_id"),
+        dq.not_null("patient_id"),  # a financial transaction must know its patient
         dq.non_negative("amount"), dq.non_negative("paid_amount"),
     ]
     valid, bad = dq.split_valid_quarantine(raw, rules)
     dq.write_quarantine(bad, f"{config.QUARANTINE}/transaction/")
     w = Window.partitionBy("txn_id", "hospital_id").orderBy(F.col("modified_at").desc_nulls_last())
     cdm = (valid.withColumn("_rn", F.row_number().over(w)).filter("_rn=1").drop("_rn")
-           .select("txn_id", "hospital_id", "encounter_id",
+           .select("txn_id", "hospital_id", "encounter_id", "patient_id",
                    F.col("amount").alias("charge_amount"),
                    "paid_amount",
                    F.coalesce("adjustment", F.lit(0)).alias("adjustment"),
-                   "payer", "status", "txn_date"))
+                   "amount_type", "payer", "status",
+                   "visit_date", "service_date", "txn_date"))
     cdm.write.format("delta").mode("overwrite").saveAsTable(txn_target)
     a["rows_written"] = cdm.count()
 

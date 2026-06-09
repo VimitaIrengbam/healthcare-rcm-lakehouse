@@ -58,6 +58,7 @@ with audit.log_load(spark, "gold_facts", "silver", config.fqn(G, "fact_*"), "ful
     txn = spark.table(config.fqn(S, "transaction"))
     fact_txn = (txn.join(enc.drop("patient_id", "provider_id"), on=["encounter_id", "hospital_id"], how="left")
                 .withColumn("txn_date_key", F.date_format("txn_date", "yyyyMMdd").cast("int"))
+                .withColumn("service_date_key", F.date_format("service_date", "yyyyMMdd").cast("int"))
                 .withColumn("outstanding_ar", F.col("charge_amount") - F.col("paid_amount") - F.col("adjustment")))
     fact_txn.write.format("delta").mode("overwrite").option("overwriteSchema", "true") \
         .saveAsTable(config.fqn(G, "fact_transaction"))

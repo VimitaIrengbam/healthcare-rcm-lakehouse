@@ -69,12 +69,16 @@ CREATE TABLE dbo.Transactions (
     txn_id         VARCHAR(50)   NOT NULL,
     hospital_id    VARCHAR(20)   NOT NULL,
     encounter_id   VARCHAR(50)   NULL,
+    patient_id     VARCHAR(50)   NULL,            -- WHO the charge/payment is for (the guarantor)
     amount         DECIMAL(12,2) NULL,            -- charged amount
     paid_amount    DECIMAL(12,2) NULL,
     adjustment     DECIMAL(12,2) NULL,            -- contractual adjustment (for NCR)
+    amount_type    VARCHAR(20)   NULL,            -- Insurance / Co-pay / Self-pay
     payer          NVARCHAR(100) NULL,
     status         VARCHAR(30)   NULL,            -- billed/paid/denied/...
-    txn_date       DATE          NULL,            -- incremental watermark
+    visit_date     DATE          NULL,            -- date of the patient visit
+    service_date   DATE          NULL,            -- date the billable service was rendered
+    txn_date       DATE          NULL,            -- financial POST date (incremental watermark)
     modified_at    DATETIME2     NOT NULL DEFAULT SYSUTCDATETIME(),
     CONSTRAINT PK_Transactions PRIMARY KEY (txn_id, hospital_id)
 );
