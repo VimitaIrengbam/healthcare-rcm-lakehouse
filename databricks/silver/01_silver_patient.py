@@ -10,6 +10,9 @@ from pyspark.sql.window import Window
 
 from common import audit, config, dq, masking, scd
 
+# Allow the Delta table to evolve when CDM columns change (e.g. adding patient_sk).
+spark.conf.set("spark.databricks.delta.schema.autoMerge.enabled", "true")
+
 # COMMAND ----------
 bronze_path = f"{config.BRONZE}/emr/patients/"
 quarantine_path = f"{config.QUARANTINE}/patient/"
