@@ -34,7 +34,7 @@ with audit.log_load(spark, "silver_transaction", txn_bronze, txn_target, "batch"
                    F.coalesce("adjustment", F.lit(0)).alias("adjustment"),
                    "amount_type", "payer", "status",
                    "visit_date", "service_date", "txn_date"))
-    cdm.write.format("delta").mode("overwrite").saveAsTable(txn_target)
+    cdm.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(txn_target)
     a["rows_written"] = cdm.count()
 
 # COMMAND ----------
