@@ -38,8 +38,12 @@ with audit.log_load(spark, "silver_patient", bronze_path, target, "scd2") as a:
     masked = masking.apply_default_pii(deduped)
     masked = masking.redact_name(masked, "lastname")  # keep firstname for demos, redact last
 
-    # 4) Conform to CDM columns
+    # 4) Conform to CDM columns + create a SURROGATE KEY for the patient.
+    #    patient_sk is a deterministic, stable surrogate derived from the natural key
+    #    (patient_id + hospital_id) via xxhash64 — so the same patient always maps to the
+    #    same integer surrogate across runs, decoupling downstream models from the source id.
     cdm = masked.select(
+        F.xxhash64(F.concat_ws("||", F.col("patient_id"), F.col("hospital_id"))).alias("patient_sk"),
         "patient_id", "hospital_id", "firstname", "lastname",
         F.col("dob").alias("birth_year"), "gender",
         "city", "state", "zip", "ssn",

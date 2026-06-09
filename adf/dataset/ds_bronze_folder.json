@@ -1,0 +1,16 @@
+{
+  "name": "ds_bronze_folder",
+  "properties": {
+    "linkedServiceName": { "referenceName": "ls_adls_gen2", "type": "LinkedServiceReference" },
+    "type": "Binary",
+    "description": "Binary view of a bronze folder (per table/hospital). Used by Get Metadata (exists), archive Copy source, and Delete.",
+    "parameters": { "folderPath": { "type": "String" } },
+    "typeProperties": {
+      "location": {
+        "type": "AzureBlobFSLocation",
+        "fileSystem": "bronze",
+        "folderPath": { "value": "@dataset().folderPath", "type": "Expression" }
+      }
+    }
+  }
+}

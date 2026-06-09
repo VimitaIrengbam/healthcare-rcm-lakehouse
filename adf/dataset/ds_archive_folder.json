@@ -1,0 +1,16 @@
+{
+  "name": "ds_archive_folder",
+  "properties": {
+    "linkedServiceName": { "referenceName": "ls_adls_gen2", "type": "LinkedServiceReference" },
+    "type": "Binary",
+    "description": "Binary sink for archived bronze data. folderPath includes year/month/day partitions.",
+    "parameters": { "folderPath": { "type": "String" } },
+    "typeProperties": {
+      "location": {
+        "type": "AzureBlobFSLocation",
+        "fileSystem": "archive",
+        "folderPath": { "value": "@dataset().folderPath", "type": "Expression" }
+      }
+    }
+  }
+}

@@ -1,14 +1,14 @@
 {
   "name": "pl_ingest_emr_metadata",
   "properties": {
-    "description": "Metadata-driven EMR ingestion (Phase 2a): Lookup config CSV -> Filter is_active -> ForEach table -> Copy Azure SQL to bronze parquet. loadtype drives full vs incremental (watermark).",
+    "description": "Metadata-driven EMR ingestion (v2). Lookup configs.csv -> filter active -> ForEach (datasource+table): Get Metadata checks the bronze hospital folder; if files exist, archive them to archive/<table>/<hospital>/yyyy/MM/dd and clear the folder; then Full load (all rows) or Incremental load (between last audit watermark and current source max); finally log to audit. Bronze is partitioned per hospital: bronze/<targetpath>/<datasource>/.",
     "activities": [
       {
         "name": "Lookup_Config",
         "type": "Lookup",
         "typeProperties": {
-          "source": { "type": "DelimitedTextSource" },
-          "dataset": { "referenceName": "ds_config_metadata", "type": "DatasetReference" },
+          "source": { "type": "DelimitedTextSource", "storeSettings": { "type": "AzureBlobFSReadSettings", "recursive": false }, "formatSettings": { "type": "DelimitedTextReadSettings" } },
+          "dataset": { "referenceName": "ds_configs", "type": "DatasetReference" },
           "firstRowOnly": false
         }
       },
@@ -22,67 +22,117 @@
         }
       },
       {
-        "name": "ForEach_Table",
+        "name": "ForEach_Entry",
         "type": "ForEach",
         "dependsOn": [{ "activity": "Filter_Active", "dependencyConditions": ["Succeeded"] }],
         "typeProperties": {
           "items": { "value": "@activity('Filter_Active').output.value", "type": "Expression" },
-          "isSequential": false,
-          "batchCount": 4,
+          "isSequential": true,
           "activities": [
             {
-              "name": "Audit_Start",
-              "type": "SqlServerStoredProcedure",
-              "linkedServiceName": { "referenceName": "ls_azuresql_emr", "type": "LinkedServiceReference" },
+              "name": "Check_Bronze_Folder",
+              "type": "GetMetadata",
               "typeProperties": {
-                "storedProcedureName": "dbo.sp_audit_log",
-                "storedProcedureParameters": {
-                  "pipeline_name": { "value": "pl_ingest_emr_metadata", "type": "String" },
-                  "source": { "value": "@concat(item().datasource, '.', item().tablename)", "type": "String" },
-                  "target": { "value": "@item().targetpath", "type": "String" },
-                  "load_type": { "value": "@item().loadtype", "type": "String" },
-                  "status": { "value": "running", "type": "String" }
-                }
+                "dataset": {
+                  "referenceName": "ds_bronze_folder",
+                  "type": "DatasetReference",
+                  "parameters": { "folderPath": { "value": "@concat(item().targetpath, '/', item().datasource)", "type": "Expression" } }
+                },
+                "fieldList": ["exists", "childItems"],
+                "storeSettings": { "type": "AzureBlobFSReadSettings", "recursive": false, "enablePartitionDiscovery": false },
+                "formatSettings": { "type": "BinaryReadSettings" }
               }
             },
             {
-              "name": "Copy_Table",
+              "name": "If_Files_Exist",
+              "type": "IfCondition",
+              "dependsOn": [{ "activity": "Check_Bronze_Folder", "dependencyConditions": ["Succeeded"] }],
+              "typeProperties": {
+                "expression": { "value": "@activity('Check_Bronze_Folder').output.exists", "type": "Expression" },
+                "ifTrueActivities": [
+                  {
+                    "name": "Archive_Existing",
+                    "type": "Copy",
+                    "typeProperties": {
+                      "source": { "type": "BinarySource", "storeSettings": { "type": "AzureBlobFSReadSettings", "recursive": true } },
+                      "sink": { "type": "BinarySink", "storeSettings": { "type": "AzureBlobFSWriteSettings" } }
+                    },
+                    "inputs": [{ "referenceName": "ds_bronze_folder", "type": "DatasetReference", "parameters": { "folderPath": { "value": "@concat(item().targetpath, '/', item().datasource)", "type": "Expression" } } }],
+                    "outputs": [{ "referenceName": "ds_archive_folder", "type": "DatasetReference", "parameters": { "folderPath": { "value": "@concat(item().targetpath, '/', item().datasource, '/', formatDateTime(utcnow(),'yyyy'), '/', formatDateTime(utcnow(),'MM'), '/', formatDateTime(utcnow(),'dd'))", "type": "Expression" } } }]
+                  },
+                  {
+                    "name": "Delete_Old_Bronze",
+                    "type": "Delete",
+                    "dependsOn": [{ "activity": "Archive_Existing", "dependencyConditions": ["Succeeded"] }],
+                    "typeProperties": {
+                      "dataset": { "referenceName": "ds_bronze_folder", "type": "DatasetReference", "parameters": { "folderPath": { "value": "@concat(item().targetpath, '/', item().datasource)", "type": "Expression" } } },
+                      "enableLogging": false,
+                      "storeSettings": { "type": "AzureBlobFSReadSettings", "recursive": true }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "name": "Get_Old_Watermark",
+              "type": "Lookup",
+              "dependsOn": [{ "activity": "If_Files_Exist", "dependencyConditions": ["Succeeded"] }],
+              "typeProperties": {
+                "source": {
+                  "type": "AzureSqlSource",
+                  "sqlReaderQuery": { "value": "@concat('SELECT ISNULL(MAX(last_watermark_value),''1900-01-01T00:00:00'') AS last_wm FROM dbo.audit_log WHERE status=''success'' AND datasource=''', item().datasource, ''' AND tablename=''', item().tablename, '''')", "type": "Expression" }
+                },
+                "dataset": { "referenceName": "ds_azuresql_generic", "type": "DatasetReference", "parameters": { "tableName": "audit_log" } },
+                "firstRowOnly": true
+              }
+            },
+            {
+              "name": "Get_New_Watermark",
+              "type": "Lookup",
+              "dependsOn": [{ "activity": "If_Files_Exist", "dependencyConditions": ["Succeeded"] }],
+              "typeProperties": {
+                "source": {
+                  "type": "AzureSqlSource",
+                  "sqlReaderQuery": { "value": "@if(equals(item().loadtype,'incremental'), concat('SELECT ISNULL(MAX(', item().watermark, '),''1900-01-01T00:00:00'') AS new_wm FROM dbo.', item().tablename, ' WHERE hospital_id=''', item().datasource, ''''), 'SELECT ''1900-01-01T00:00:00'' AS new_wm')", "type": "Expression" }
+                },
+                "dataset": { "referenceName": "ds_azuresql_generic", "type": "DatasetReference", "parameters": { "tableName": { "value": "@item().tablename", "type": "Expression" } } },
+                "firstRowOnly": true
+              }
+            },
+            {
+              "name": "Copy_To_Bronze",
               "type": "Copy",
-              "dependsOn": [{ "activity": "Audit_Start", "dependencyConditions": ["Succeeded"] }],
+              "dependsOn": [
+                { "activity": "Get_Old_Watermark", "dependencyConditions": ["Succeeded"] },
+                { "activity": "Get_New_Watermark", "dependencyConditions": ["Succeeded"] }
+              ],
               "policy": { "timeout": "0.02:00:00", "retry": 1 },
               "typeProperties": {
                 "source": {
                   "type": "AzureSqlSource",
-                  "sqlReaderQuery": {
-                    "value": "@if(equals(item().loadtype,'incremental'), concat('SELECT * FROM dbo.', item().tablename, ' WHERE hospital_id = ''', item().datasource, ''' AND ', item().watermark, ' > ''', if(empty(item().watermark_value), '1900-01-01', item().watermark_value), ''''), concat('SELECT * FROM dbo.', item().tablename, ' WHERE hospital_id = ''', item().datasource, ''''))",
-                    "type": "Expression"
-                  }
+                  "sqlReaderQuery": { "value": "@if(equals(item().loadtype,'incremental'), concat('SELECT * FROM dbo.', item().tablename, ' WHERE hospital_id=''', item().datasource, ''' AND ', item().watermark, ' > ''', activity('Get_Old_Watermark').output.firstRow.last_wm, ''' AND ', item().watermark, ' <= ''', activity('Get_New_Watermark').output.firstRow.new_wm, ''''), concat('SELECT * FROM dbo.', item().tablename, ' WHERE hospital_id=''', item().datasource, ''''))", "type": "Expression" }
                 },
                 "sink": { "type": "ParquetSink", "storeSettings": { "type": "AzureBlobFSWriteSettings" } }
               },
-              "inputs": [{
-                "referenceName": "ds_azuresql_generic", "type": "DatasetReference",
-                "parameters": { "tableName": { "value": "@item().tablename", "type": "Expression" } }
-              }],
-              "outputs": [{
-                "referenceName": "ds_bronze_parquet_generic", "type": "DatasetReference",
-                "parameters": { "targetPath": { "value": "@concat(replace(item().targetpath,'bronze/',''), '/', item().datasource)", "type": "Expression" } }
-              }]
+              "inputs": [{ "referenceName": "ds_azuresql_generic", "type": "DatasetReference", "parameters": { "tableName": { "value": "@item().tablename", "type": "Expression" } } }],
+              "outputs": [{ "referenceName": "ds_bronze_parquet_generic", "type": "DatasetReference", "parameters": { "targetPath": { "value": "@concat(item().targetpath, '/', item().datasource)", "type": "Expression" } } }]
             },
             {
-              "name": "Audit_End",
+              "name": "Log_Audit",
               "type": "SqlServerStoredProcedure",
-              "dependsOn": [{ "activity": "Copy_Table", "dependencyConditions": ["Succeeded"] }],
+              "dependsOn": [{ "activity": "Copy_To_Bronze", "dependencyConditions": ["Succeeded"] }],
               "linkedServiceName": { "referenceName": "ls_azuresql_emr", "type": "LinkedServiceReference" },
               "typeProperties": {
-                "storedProcedureName": "dbo.sp_audit_log",
+                "storedProcedureName": "dbo.sp_log_load",
                 "storedProcedureParameters": {
                   "pipeline_name": { "value": "pl_ingest_emr_metadata", "type": "String" },
-                  "source": { "value": "@concat(item().datasource, '.', item().tablename)", "type": "String" },
-                  "target": { "value": "@item().targetpath", "type": "String" },
-                  "load_type": { "value": "@item().loadtype", "type": "String" },
-                  "status": { "value": "success", "type": "String" },
-                  "rows_written": { "value": "@activity('Copy_Table').output.rowsCopied", "type": "Int32" }
+                  "datasource": { "value": { "value": "@item().datasource", "type": "Expression" }, "type": "String" },
+                  "tablename": { "value": { "value": "@item().tablename", "type": "Expression" }, "type": "String" },
+                  "load_type": { "value": { "value": "@item().loadtype", "type": "Expression" }, "type": "String" },
+                  "watermark_column": { "value": { "value": "@item().watermark", "type": "Expression" }, "type": "String" },
+                  "last_watermark_value": { "value": { "value": "@if(equals(item().loadtype,'incremental'), activity('Get_New_Watermark').output.firstRow.new_wm, '')", "type": "Expression" }, "type": "String" },
+                  "rows_written": { "value": { "value": "@activity('Copy_To_Bronze').output.rowsCopied", "type": "Expression" }, "type": "Int64" },
+                  "status": { "value": "success", "type": "String" }
                 }
               }
             }
@@ -90,6 +140,6 @@
         }
       }
     ],
-    "annotations": ["phase-2", "metadata-driven", "bronze"]
+    "annotations": ["phase-2", "metadata-driven", "bronze", "archive", "incremental"]
   }
 }
