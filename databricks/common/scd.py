@@ -25,7 +25,10 @@ def scd2_merge(
     """
     from delta.tables import DeltaTable
 
-    hash_expr = F.sha2(F.concat_ws("||", *[F.col(c).cast("string") for c in tracked_cols]), 256)
+    # xxhash64 (non-cryptographic) is used purely for change detection — far cheaper than
+    # sha2 and the collision risk at dimension scale is negligible. A collision would only
+    # ever cause a missed change, never corruption.
+    hash_expr = F.xxhash64(F.concat_ws("||", *[F.col(c).cast("string") for c in tracked_cols]))
     src = (
         source_df
         .withColumn("row_hash", hash_expr)
