@@ -7,14 +7,14 @@ variables:
   catalog:
     default: rcm
   storage_account:
-    default: strcmdemo
+    default: strcmdemo70648c
 
 targets:
   dev:
     mode: development
     default: true
     workspace:
-      host: https://adb-XXXXXXXX.azuredatabricks.net   # set to your workspace URL
+      host: https://adb-7405606479280392.12.azuredatabricks.net
 
 # Build the shared `common` helpers into a wheel at deploy time. `python -m build` reads
 # databricks/pyproject.toml and emits dist/rcm_common-<version>-py3-none-any.whl, which is
