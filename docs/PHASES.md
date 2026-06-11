@@ -73,6 +73,8 @@ So silver/gold Delta files physically live in the `silver`/`gold` ADLS container
 ## Phase 7 — Orchestration & CI/CD
 - Files: `databricks/databricks.yml` (Asset Bundle: batch job DAG + streaming job), `.github/workflows/ci.yml`.
 - `databricks bundle deploy -t dev` deploys the chained job; CI runs ruff + pytest then deploys on main.
+- See [DEPLOY.md](DEPLOY.md) for the full deploy + run sequence (CLI/auth setup, wheel build,
+  the one-time SCD2 `row_hash` migration, and post-deploy verification).
 
 ## Phase 8 — Verification
 - Local: `pip install -r requirements-dev.txt && pytest` (no Azure needed).
