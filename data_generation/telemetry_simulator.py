@@ -18,7 +18,7 @@ import json
 import random
 import time
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 
@@ -34,7 +34,7 @@ def gen_event(patient_id: str, now: datetime, late: bool) -> dict:
         "systolic_bp": random.randint(90, 160),
         "diastolic_bp": random.randint(55, 100),
         "temperature_c": round(random.uniform(36.0, 39.5), 1),
-        "event_time": event_time.astimezone(timezone.utc).isoformat(),
+        "event_time": event_time.astimezone(UTC).isoformat(),
     }
 
 
@@ -53,7 +53,7 @@ def main() -> None:
 
     print(f"Emitting telemetry for {len(patient_ids)} patients -> {out_dir}")
     for b in range(args.batches):
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         events = []
         for pid in patient_ids:
             late = random.random() < args.late_fraction

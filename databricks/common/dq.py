@@ -7,7 +7,6 @@ notebooks stay readable. A "rule" is (name, boolean Column expression that must 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable
 
 from pyspark.sql import Column, DataFrame
 from pyspark.sql import functions as F

@@ -8,11 +8,10 @@ from __future__ import annotations
 
 import uuid
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from pyspark.sql import SparkSession
-from pyspark.sql.types import (LongType, StringType, StructField, StructType,
-                               TimestampType)
+from pyspark.sql.types import LongType, StringType, StructField, StructType, TimestampType
 
 from . import config
 
@@ -86,7 +85,7 @@ def log_load(spark: SparkSession, pipeline_name: str, source: str, target: str,
         "rows_read": None,
         "rows_written": None,
         "watermark_value": watermark_value,
-        "start_time": datetime.now(timezone.utc),
+        "start_time": datetime.now(UTC),
         "end_time": None,
         "status": "running",
         "error_msg": None,
@@ -99,5 +98,5 @@ def log_load(spark: SparkSession, pipeline_name: str, source: str, target: str,
         state["error_msg"] = str(e)[:2000]
         raise
     finally:
-        state["end_time"] = datetime.now(timezone.utc)
+        state["end_time"] = datetime.now(UTC)
         _write_row(spark, state)

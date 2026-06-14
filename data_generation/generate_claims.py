@@ -96,7 +96,7 @@ def main() -> None:
                 w.writerow(gen_claim(ms))
         print(f"wrote {fname}  ({args.per_month} claims)")
 
-    print(f"\nDone. Upload to ADLS landing/claims/ e.g.:")
+    print("\nDone. Upload to ADLS landing/claims/ e.g.:")
     print(f"  az storage blob upload-batch -d landing/claims -s {out_dir} "
           f"--account-name <storage> --auth-mode login")
 
