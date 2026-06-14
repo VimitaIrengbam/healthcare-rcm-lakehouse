@@ -82,6 +82,23 @@ resources:
           notebook_task: { notebook_path: ./gold/02_gold_kpis.py }
           libraries: *common_libs
 
+    # Lightweight, late-claim-driven KPI refresh. Schedule this more frequently than the full
+    # batch pipeline: it recomputes only the denial-rate rows for hospitals with newly-detected
+    # late claims (audit.claim_restated_periods), instead of rebuilding all gold KPIs.
+    rcm_kpi_incremental_refresh:
+      name: "RCM KPI Incremental Refresh (late-claim driven)"
+      tasks:
+        - task_key: denial_rate_recompute
+          new_cluster:
+            spark_version: 15.4.x-scala2.12
+            node_type_id: Standard_DS3_v2
+            num_workers: 1
+            spark_env_vars:
+              RCM_CATALOG: ${var.catalog}
+              RCM_STORAGE_ACCOUNT: ${var.storage_account}
+          notebook_task: { notebook_path: ./gold/03_gold_kpi_denial_recompute.py }
+          libraries: *common_libs
+
     rcm_telemetry_stream:
       name: "RCM Telemetry Streaming"
       tasks:
